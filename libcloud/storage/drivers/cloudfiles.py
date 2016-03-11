@@ -918,6 +918,52 @@ class OpenStackSwiftStorageDriver(CloudFilesStorageDriver):
                                                           region=region,
                                                           **kwargs)
 
+    def ex_get_object_temp_url(self, obj, method='GET', timeout=60):
+        """
+        Create a temporary URL to allow others to retrieve or put objects
+        in your Cloud Files account for as long or as short a time as you
+        wish.  This method is specifically for allowing users to retrieve
+        or update an object.
+
+        :param obj: The object that you wish to make temporarily public
+        :type obj: :class:`Object`
+
+        :param method: Which method you would like to allow, 'PUT' or 'GET'
+        :type method: ``str``
+
+        :param timeout: Time (in seconds) after which you want the TempURL
+        to expire.
+        :type timeout: ``int``
+
+        :rtype: ``bool``
+        """
+        # pylint: disable=no-member
+        self.connection._populate_hosts_and_request_paths()
+        expires = int(time() + timeout)
+        path = '%s/%s/%s' % (self.connection.request_path,
+                             obj.container.name, obj.name)
+        try:
+            key = self.ex_get_meta_data()['temp_url_key']
+            assert key is not None
+        except Exception:
+            raise KeyError('You must first set the ' +
+                           'X-Account-Meta-Temp-URL-Key header on your ' +
+                           'Cloud Files account using ' +
+                           'ex_set_account_metadata_temp_url_key before ' +
+                           'you can use this method.')
+        hmac_body = '%s\n%s\n%s' % (method, expires, path)
+        sig = hmac.new(b(key), b(hmac_body), sha1).hexdigest()
+        params = urlencode({'temp_url_sig': sig,
+                            'temp_url_expires': expires})
+
+        schema="http"
+        if self.secure:
+            schema+='s'
+        temp_url = '%s://%s:%s%s/%s/%s?%s' %\
+                   (schema,self.connection.host,self.connection.port, self.connection.request_path,
+                    obj.container.name, obj.name, params)
+
+        return temp_url
 
 class CloudFilesUKStorageDriver(CloudFilesStorageDriver):
     """
